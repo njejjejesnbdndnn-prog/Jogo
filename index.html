@@ -340,3 +340,277 @@
       overflow-y: auto;
       padding: 16px;
     }
+    
+    /* ESTILO VISÍVEL E CLARO PARA NOTAS (TEXTO 100% VISÍVEL) */
+    .note-card {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .note-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a !important; /* Cor bem escura para visibilidade perfeita */
+      margin-bottom: 4px;
+    }
+    .note-text {
+      font-size: 12px;
+      font-weight: 500;
+      color: #1e293b !important; /* Texto bem claro e visível ao ler e editar */
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+
+    /* MODAL DE ADICIONAR NOTA */
+    #modal-note {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 110;
+    }
+    .note-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #0f172a !important; /* Visível enquanto digita */
+      margin-bottom: 10px;
+      outline: none;
+    }
+    .note-textarea {
+      width: 100%;
+      height: 120px;
+      padding: 10px 12px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #0f172a !important; /* Visível enquanto digita */
+      margin-bottom: 14px;
+      resize: none;
+      outline: none;
+      line-height: 1.4;
+    }
+
+    /* LIGHTBOX FULLSCREEN */
+    #lightbox {
+      position: fixed;
+      inset: 0;
+      background: #000000;
+      z-index: 120;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .media-item {
+      aspect-ratio: 1;
+      background: #cbd5e1;
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid #94a3b8;
+    }
+    .media-item img, .media-item video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-viewport">
+
+    <!-- ==================== TELA 1: INTERFACE DO JOGO ==================== -->
+    <div id="screen-game" class="screen-flex">
+      <!-- Header do Jogo -->
+      <header class="game-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="game-logo-box">
+            <i class="fa-solid fa-cube"></i>
+          </div>
+          <div>
+            <h1 class="font-orbitron" style="font-size: 13px; color: #06b6d4; line-height: 1;">JOGO</h1>
+            <span style="font-size: 10px; color: #94a3b8; font-weight: bold;">PONTOS: <span id="score-display" class="score-txt">0</span></span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="btn-audio" class="btn-icon">
+            <i id="audio-icon" class="fa-solid fa-volume-high" style="font-size: 12px;"></i>
+          </button>
+          <button id="btn-exit" class="btn-exit font-orbitron">
+            <i class="fa-solid fa-right-from-bracket"></i> SAIR
+          </button>
+        </div>
+      </header>
+
+      <!-- Canvas Wrapper -->
+      <main id="canvas-wrapper" class="canvas-container">
+        <canvas id="tetris-canvas"></canvas>
+
+        <!-- Game Over Overlay -->
+        <div id="game-over-overlay" class="modal-hidden" style="position: absolute; inset: 0; background: rgba(2, 6, 23, 0.9); flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; z-index: 30;">
+          <h2 class="font-orbitron" style="font-size: 22px; color: #f43f5e; margin-bottom: 4px;">FIM DE JOGO</h2>
+          <p style="font-size: 12px; color: #94a3b8; margin-bottom: 16px;">Pontuação Total: <span id="final-score" class="score-txt">0</span></p>
+          <button onclick="resetGame()" class="font-orbitron" style="padding: 10px 20px; background: #06b6d4; color: #020617; font-weight: bold; border: none; border-radius: 12px; font-size: 12px; cursor: pointer;">
+            JOGAR NOVAMENTE
+          </button>
+        </div>
+
+        <!-- Controles sobrepostos em Overlay -->
+        <div class="game-controls-overlay">
+          <button id="ctrl-left" class="ctrl-btn"><i class="fa-solid fa-arrow-left"></i></button>
+          <button id="ctrl-rotate" class="ctrl-btn" style="color: #c084fc;"><i class="fa-solid fa-rotate-right"></i></button>
+          <button id="ctrl-right" class="ctrl-btn"><i class="fa-solid fa-arrow-right"></i></button>
+          <button id="ctrl-drop" class="ctrl-btn ctrl-btn-drop"><i class="fa-solid fa-angles-down"></i></button>
+        </div>
+      </main>
+    </div>
+
+    <!-- Modal de Saída Padrão -->
+    <div id="modal-exit" class="modal-hidden">
+      <div class="modal-box">
+        <div style="width: 44px; height: 44px; background: rgba(244, 63, 94, 0.2); color: #f43f5e; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; font-size: 18px;">
+          <i class="fa-solid fa-circle-exclamation"></i>
+        </div>
+        <h3 class="font-orbitron" style="font-size: 16px; color: #f8fafc; margin-bottom: 4px;">Deseja Sair?</h3>
+        <p style="font-size: 11px; color: #94a3b8; margin-bottom: 20px;">Seu progresso atual na partida será encerrado.</p>
+        <div style="display: flex; gap: 10px;">
+          <button id="modal-cancel" style="flex: 1; padding: 10px; background: #1e293b; border: 1px solid #334155; color: #cbd5e1; font-weight: bold; border-radius: 10px; font-size: 11px; cursor: pointer;">CANCELAR</button>
+          <button id="modal-confirm" style="flex: 1; padding: 10px; background: #e11d48; color: #ffffff; font-weight: bold; border-radius: 10px; border: none; font-size: 11px; cursor: pointer;">SAIR</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TELA 2: PÁGINA 404 (DISCRETA E ISOLADA) ==================== -->
+    <div id="screen-404" class="screen-hidden">
+      <div class="scanlines"></div>
+      
+      <div style="position: relative; z-index: 10; max-width: 280px; width: 100%;">
+        <div style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: rgba(244, 63, 94, 0.2); border: 1px solid rgba(244, 63, 94, 0.4); border-radius: 20px; color: #fb7185; font-size: 10px; font-family: monospace; font-weight: bold; margin-bottom: 16px;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #f43f5e;"></span>
+          <span>SISTEMA INTERROMPIDO</span>
+        </div>
+
+        <!-- Dígitos Secretos (4 -> 1x, 0 -> 5x, 4 -> 1x) SEM feedback ou alteração visual -->
+        <div class="glitch-text font-orbitron">
+          <span id="digit-1" style="cursor: pointer;">4</span>
+          <span id="digit-2" style="cursor: pointer;">0</span>
+          <span id="digit-3" style="cursor: pointer;">4</span>
+        </div>
+
+        <h2 class="font-orbitron" style="font-size: 18px; color: #fb7185; margin: 12px 0 6px 0;">ERRO DE CONEXÃO</h2>
+        <p style="font-size: 11px; color: #94a3b8; font-family: monospace; margin-bottom: 24px; line-height: 1.4;">A página requisitada foi movida ou não existe mais no servidor.</p>
+
+        <button id="btn-back-404" class="font-orbitron" style="width: 100%; padding: 12px; background: #0f172a; border: 1px solid rgba(244, 63, 94, 0.4); color: #fda4af; font-size: 11px; font-weight: bold; border-radius: 12px; cursor: pointer;">
+          <i class="fa-solid fa-rotate-left" style="margin-right: 6px;"></i> RETORNAR AO JOGO
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== TELA 3: TELA DO ÚLTIMO NÍVEL (COFRE/SENHA) ==================== -->
+    <div id="screen-pin" class="screen-hidden">
+      <div class="vault-card">
+        <h2 class="font-orbitron" style="font-size: 16px; color: #0f172a; font-weight: 900; margin-bottom: 6px;">ÚLTIMO NÍVEL, PARABÉNS!!</h2>
+        <p style="font-size: 9px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 16px; line-height: 1.3;">
+          PARA CONSEGUIR A SEQUÊNCIA DE NÚMEROS ALCANCE 20 MIL PONTOS.
+        </p>
+
+        <!-- Display de Senha Discreto -->
+        <div id="pin-display" class="pin-display">
+          <span style="color: #94a3b8; font-size: 11px; font-family: sans-serif; font-weight: normal;">Digite a senha...</span>
+        </div>
+
+        <!-- Teclado Numérico em Tons Neutros -->
+        <div class="pin-grid">
+          <button onclick="pressNum('1')" class="vault-num-btn">1</button>
+          <button onclick="pressNum('2')" class="vault-num-btn">2</button>
+          <button onclick="pressNum('3')" class="vault-num-btn">3</button>
+          <button onclick="pressNum('4')" class="vault-num-btn">4</button>
+          <button onclick="pressNum('5')" class="vault-num-btn">5</button>
+          <button onclick="pressNum('6')" class="vault-num-btn">6</button>
+          <button onclick="pressNum('7')" class="vault-num-btn">7</button>
+          <button onclick="pressNum('8')" class="vault-num-btn">8</button>
+          <button onclick="pressNum('9')" class="vault-num-btn">9</button>
+          <button onclick="clearPass()" class="vault-num-btn" style="color: #e11d48;"><i class="fa-solid fa-rotate-left"></i></button>
+          <button onclick="pressNum('0')" class="vault-num-btn">0</button>
+          <button onclick="submitPass()" class="vault-num-btn" style="color: #059669;"><i class="fa-solid fa-check"></i></button>
+        </div>
+
+        <button onclick="backTo404FromPass()" style="background: none; border: none; font-size: 11px; color: #64748b; font-weight: bold; cursor: pointer;">Voltar</button>
+      </div>
+    </div>
+
+    <!-- ==================== TELA 4: COFRE DE MÍDIAS E NOTAS ==================== -->
+    <div id="screen-vault" class="screen-hidden">
+      <header class="vault-header">
+        <span class="font-orbitron" style="font-size: 12px; font-weight: bold; color: #0f172a;">MÍDIAS & NOTAS</span>
+        <button onclick="lockVault()" style="padding: 6px 12px; border-radius: 8px; background: #cbd5e1; border: 1px solid #94a3b8; font-weight: bold; font-size: 11px; color: #334155; cursor: pointer;">
+          <i class="fa-solid fa-xmark"></i> FECHAR
+        </button>
+      </header>
+
+      <!-- Abas -->
+      <div class="vault-tabs">
+        <button id="tab-btn-media" onclick="switchVaultTab('media')" class="vault-tab-btn active font-orbitron">
+          <i class="fa-solid fa-photo-film"></i> MÍDIAS (<span id="media-count">0</span>)
+        </button>
+        <button id="tab-btn-notes" onclick="switchVaultTab('notes')" class="vault-tab-btn font-orbitron">
+          <i class="fa-solid fa-note-sticky"></i> NOTAS (<span id="notes-count">0</span>)
+        </button>
+      </div>
+
+      <main class="vault-body">
+        <!-- Aba Mídias -->
+        <div id="vault-tab-media">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <span style="font-size: 11px; font-weight: bold; color: #475569;">Arquivos do dispositivo</span>
+            <label style="padding: 8px 14px; background: #0f172a; color: #ffffff; border-radius: 10px; font-weight: bold; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-plus"></i> ADICIONAR
+              <input type="file" id="media-input" multiple accept="image/*,video/*" style="display: none;" onchange="handleMediaUpload(event)">
+            </label>
+          </div>
+
+          <div id="media-grid" class="media-grid"></div>
+
+          <div id="media-empty" class="screen-hidden" style="flex-direction: column; align-items: center; justify-content: center; padding: 50px 0; color: #64748b; text-align: center;">
+            <i class="fa-solid fa-images" style="font-size: 36px; margin-bottom: 8px; color: #94a3b8;"></i>
+            <p style="font-size: 11px; font-weight: bold;">Nenhuma mídia armazenada.</p>
+          </div>
+        </div>
+
+        <!-- Aba Notas -->
+        <div id="vault-tab-notes" class="screen-hidden">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <span style="font-size: 11px; font-weight: bold; color: #475569;">Minhas anotações</span>
+            <button onclick="openNoteModal()" style="padding: 8px 14px; background: #0f172a; color: #ffffff; border-radius: 10px; font-weight: bold; font-size: 11px; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-plus"></i> NOVA NOTA
+            </button>
+          </div>
+
+          <div id="notes-list"></div>
+
+          <div id="notes-empty" class="screen-hidden" style="flex-direction: column; align-items: center; justify-content: center; padding: 50px 0; color: #64748b; text-align: center;">
+            <i class="fa-solid fa-note-sticky" style="font-size: 36px; margin-bottom: 8px; color: #94a3b8;"></i>
+            <p style="font-size: 11px; font-weight: bold;">Nenhuma nota criada.</p>
+          </div>
+        </div>
+      </main>
+    </div>
+    
