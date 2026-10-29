@@ -1057,3 +1057,296 @@
       }
     }
     
+    /* ----------------------------------------------------
+       7. COFRE (INDEXEDDB MÍDIAS & NOTAS VISÍVEIS)
+    ---------------------------------------------------- */
+    let db = null;
+    let mediaList = [];
+    let notesList = JSON.parse(localStorage.getItem('vault_notes') || '[]');
+    let currentLightboxIndex = 0;
+
+    function initDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open("VaultMediaDB", 1);
+        req.onupgradeneeded = (e) => {
+          db = e.target.result;
+          if (!db.objectStoreNames.contains("medias")) {
+            db.createObjectStore("medias", { keyPath: "id", autoIncrement: true });
+          }
+        };
+        req.onsuccess = (e) => { db = e.target.result; resolve(db); };
+        req.onerror = (e) => reject(e);
+      });
+    }
+
+    function saveMediaToDB(file) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(["medias"], "readwrite");
+        const store = tx.objectStore("medias");
+        const req = store.add({ name: file.name, type: file.type, size: file.size, blob: file, date: Date.now() });
+        req.onsuccess = () => resolve();
+        req.onerror = (e) => reject(e);
+      });
+    }
+
+    function getAllMediasFromDB() {
+      return new Promise((resolve, reject) => {
+        if (!db) { resolve([]); return; }
+        const tx = db.transaction(["medias"], "readonly");
+        const store = tx.objectStore("medias");
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = (e) => reject(e);
+      });
+    }
+
+    function deleteMediaFromDB(id) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(["medias"], "readwrite");
+        const store = tx.objectStore("medias");
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = (e) => reject(e);
+      });
+    }
+
+    function openVaultScreen() {
+      showScreen('screen-vault');
+      loadVaultData();
+    }
+
+    function lockVault() {
+      showScreen('screen-game');
+      clearPass();
+      resizeCanvas();
+    }
+
+    function switchVaultTab(tab) {
+      const btnMedia = document.getElementById('tab-btn-media');
+      const btnNotes = document.getElementById('tab-btn-notes');
+      const viewMedia = document.getElementById('vault-tab-media');
+      const viewNotes = document.getElementById('vault-tab-notes');
+
+      if (tab === 'media') {
+        btnMedia.classList.add('active');
+        btnNotes.classList.remove('active');
+        viewMedia.classList.remove('screen-hidden');
+        viewNotes.classList.add('screen-hidden');
+      } else {
+        btnNotes.classList.add('active');
+        btnMedia.classList.remove('active');
+        viewNotes.classList.remove('screen-hidden');
+        viewMedia.classList.add('screen-hidden');
+      }
+    }
+
+    async function loadVaultData() {
+      await initDB();
+      mediaList = await getAllMediasFromDB();
+      renderMediaGrid();
+      renderNotesList();
+    }
+
+    async function handleMediaUpload(event) {
+      const files = Array.from(event.target.files);
+      if (!files.length) return;
+      const existing = new Set(mediaList.map(m => `${m.name}_${m.size}`));
+
+      for (const f of files) {
+        if (!existing.has(`${f.name}_${f.size}`)) {
+          await saveMediaToDB(f);
+        }
+      }
+
+      event.target.value = '';
+      mediaList = await getAllMediasFromDB();
+      renderMediaGrid();
+    }
+
+    function renderMediaGrid() {
+      const grid = document.getElementById('media-grid');
+      const empty = document.getElementById('media-empty');
+      document.getElementById('media-count').innerText = mediaList.length;
+      grid.innerHTML = '';
+
+      if (mediaList.length === 0) {
+        empty.classList.remove('screen-hidden'); empty.classList.add('screen-flex');
+        return;
+      } else {
+        empty.classList.add('screen-hidden'); empty.classList.remove('screen-flex');
+      }
+
+      mediaList.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = "media-item";
+        const url = URL.createObjectURL(item.blob);
+
+        if (item.type.startsWith('image/')) {
+          card.innerHTML = `<img src="${url}">`;
+        } else {
+          card.innerHTML = `<video src="${url}#t=0.5"></video><div style="position: absolute; inset: 0; background: rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; color: white;"><i class="fa-solid fa-play"></i></div>`;
+        }
+        card.onclick = () => openLightbox(index);
+        grid.appendChild(card);
+      });
+    }
+
+    /* ----------------------------------------------------
+       8. LIGHTBOX E SWIPE LATERAL
+    ---------------------------------------------------- */
+    function openLightbox(index) {
+      currentLightboxIndex = index;
+      const lb = document.getElementById('lightbox');
+      lb.classList.remove('modal-hidden');
+      lb.classList.add('modal-flex');
+      renderLightboxItem();
+    }
+
+    function closeLightbox() {
+      const lb = document.getElementById('lightbox');
+      lb.classList.remove('modal-flex');
+      lb.classList.add('modal-hidden');
+      document.getElementById('lightbox-viewer').innerHTML = '';
+    }
+
+    function renderLightboxItem() {
+      const viewer = document.getElementById('lightbox-viewer');
+      viewer.innerHTML = '';
+      if (mediaList.length === 0) { closeLightbox(); return; }
+
+      const item = mediaList[currentLightboxIndex];
+      document.getElementById('lightbox-counter').innerText = `${currentLightboxIndex + 1} / ${mediaList.length}`;
+      const url = URL.createObjectURL(item.blob);
+
+      if (item.type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = "max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none;";
+        viewer.appendChild(img);
+      } else {
+        const video = document.createElement('video');
+        video.src = url;
+        video.controls = true;
+        video.autoplay = true;
+        video.style.cssText = "max-width: 100%; max-height: 100%; object-fit: contain;";
+        viewer.appendChild(video);
+      }
+    }
+
+    async function deleteCurrentMedia() {
+      if (!mediaList.length) return;
+      await deleteMediaFromDB(mediaList[currentLightboxIndex].id);
+      mediaList = await getAllMediasFromDB();
+      if (currentLightboxIndex >= mediaList.length) currentLightboxIndex = Math.max(0, mediaList.length - 1);
+      renderMediaGrid();
+      if (mediaList.length) renderLightboxItem(); else closeLightbox();
+    }
+
+    let touchX = 0;
+    const viewer = document.getElementById('lightbox-viewer');
+    viewer.addEventListener('touchstart', e => { touchX = e.changedTouches[0].screenX; }, { passive: true });
+    viewer.addEventListener('touchend', e => {
+      const diff = e.changedTouches[0].screenX - touchX;
+      if (diff < -50 && currentLightboxIndex < mediaList.length - 1) { currentLightboxIndex++; renderLightboxItem(); }
+      if (diff > 50 && currentLightboxIndex > 0) { currentLightboxIndex--; renderLightboxItem(); }
+    }, { passive: true });
+
+    /* ----------------------------------------------------
+       9. NOTAS COM TEXTO PERFEITAMENTE VISÍVEL
+    ---------------------------------------------------- */
+    let editingNoteId = null;
+
+    function renderNotesList() {
+      const list = document.getElementById('notes-list');
+      const empty = document.getElementById('notes-empty');
+      document.getElementById('notes-count').innerText = notesList.length;
+      list.innerHTML = '';
+
+      if (notesList.length === 0) {
+        empty.classList.remove('screen-hidden'); empty.classList.add('screen-flex');
+        return;
+      } else {
+        empty.classList.add('screen-hidden'); empty.classList.remove('screen-flex');
+      }
+
+      notesList.forEach(note => {
+        const card = document.createElement('div');
+        card.className = "note-card";
+        card.innerHTML = `
+          <div>
+            <h4 class="note-title">${escapeHTML(note.title)}</h4>
+            <p class="note-text">${escapeHTML(note.content)}</p>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #cbd5e1; margin-top: 10px; padding-top: 8px; font-size: 10px; color: #64748b; font-weight: 600;">
+            <span>${note.date}</span>
+            <div style="display: flex; gap: 12px;">
+              <button onclick="openNoteModal(${note.id})" style="background: none; border: none; color: #0f172a; font-weight: bold; cursor: pointer;">Editar</button>
+              <button onclick="deleteNote(${note.id})" style="background: none; border: none; color: #e11d48; font-weight: bold; cursor: pointer;">Excluir</button>
+            </div>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    function openNoteModal(id = null) {
+      editingNoteId = id;
+      const modal = document.getElementById('modal-note');
+      if (id) {
+        const n = notesList.find(item => item.id === id);
+        document.getElementById('note-title-input').value = n.title;
+        document.getElementById('note-content-input').value = n.content;
+      } else {
+        document.getElementById('note-title-input').value = '';
+        document.getElementById('note-content-input').value = '';
+      }
+      modal.classList.remove('modal-hidden');
+      modal.classList.add('modal-flex');
+    }
+
+    function closeNoteModal() {
+      const modal = document.getElementById('modal-note');
+      modal.classList.remove('modal-flex');
+      modal.classList.add('modal-hidden');
+    }
+
+    function saveNote() {
+      const title = document.getElementById('note-title-input').value.trim();
+      const content = document.getElementById('note-content-input').value.trim();
+      if (!title && !content) { closeNoteModal(); return; }
+
+      const now = new Date();
+      const dateStr = `${now.toLocaleDateString()} ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+      if (editingNoteId) {
+        notesList = notesList.map(n => n.id === editingNoteId ? { ...n, title, content, date: dateStr } : n);
+      } else {
+        notesList.unshift({ id: Date.now(), title: title || "Nota", content, date: dateStr });
+      }
+
+      localStorage.setItem('vault_notes', JSON.stringify(notesList));
+      closeNoteModal();
+      renderNotesList();
+    }
+
+    function deleteNote(id) {
+      notesList = notesList.filter(n => n.id !== id);
+      localStorage.setItem('vault_notes', JSON.stringify(notesList));
+      renderNotesList();
+    }
+
+    function escapeHTML(str) {
+      return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+    }
+
+    window.onload = () => {
+      showScreen('screen-game');
+      resizeCanvas();
+      createPiece();
+      update();
+    };
+
+    window.onresize = resizeCanvas;
+  </script>
+</body>
+</html>
