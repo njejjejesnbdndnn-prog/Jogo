@@ -453,5 +453,192 @@
             [[6,0,0],[6,6,6],[0,0,0]],
             [[0,0,7],[7,7,7],[0,0,0]]
         ];
+        let player = { pos: { x: 0, y: 0 }, matrix: null, colorIndex: 0 };
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const availableHeight = container.clientHeight;
+            const availableWidth = container.clientWidth;
+            BLOCK_SIZE = Math.floor(Math.min(availableHeight / ROWS, availableWidth / COLS));
+            canvas.width = COLS * BLOCK_SIZE;
+            canvas.height = ROWS * BLOCK_SIZE;
+        }
+
+        function createPiece() {
+            const type = Math.floor(Math.random() * (SHAPES.length - 1)) + 1;
+            player.matrix = SHAPES[type];
+            player.colorIndex = type;
+            player.pos.y = 0;
+            player.pos.x = Math.floor(COLS / 2) - Math.floor(player.matrix[0].length / 2);
+
+            if (collide(grid, player)) {
+                gameOver = true;
+                document.getElementById('final-score').innerText = score;
+                document.getElementById('game-over-overlay').classList.remove('hidden');
+                document.getElementById('game-over-overlay').classList.add('flex');
+            }
+        }
+
+        function collide(grid, player) {
+            const [m, o] = [player.matrix, player.pos];
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 && (grid[y + o.y] && grid[y + o.y][x + o.x]) !== 0) return true;
+                }
+            }
+            return false;
+        }
+
+        function merge(grid, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) grid[y + player.pos.y][x + player.pos.x] = player.colorIndex;
+                });
+            });
+        }
+
+        function sweepGrid() {
+            let rowCount = 0;
+            outer: for (let y = grid.length - 1; y >= 0; --y) {
+                for (let x = 0; x < grid[y].length; ++x) {
+                    if (grid[y][x] === 0) continue outer;
+                }
+                const row = grid.splice(y, 1)[0].fill(0);
+                grid.unshift(row);
+                ++y;
+                rowCount++;
+            }
+            if (rowCount > 0) {
+                score += rowCount * 100 * rowCount;
+                document.getElementById('score-display').innerText = score;
+                playSound('clear');
+            }
+        }
+
+        function drawMatrix(matrix, offset) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        const px = (x + offset.x) * BLOCK_SIZE;
+                        const py = (y + offset.y) * BLOCK_SIZE;
+                        ctx.fillStyle = PALETTE[value];
+                        ctx.shadowColor = PALETTE[value];
+                        ctx.shadowBlur = 6;
+                        ctx.fillRect(px + 1, py + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+                        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                        ctx.fillRect(px + 2, py + 2, BLOCK_SIZE - 4, BLOCK_SIZE / 4);
+                        ctx.shadowBlur = 0;
+                    }
+                });
+            });
+        }
+
+        function draw() {
+            ctx.fillStyle = '#070a12';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            drawMatrix(grid, { x: 0, y: 0 });
+            if (player.matrix) drawMatrix(player.matrix, player.pos);
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(grid, player)) {
+                player.pos.y--;
+                merge(grid, player);
+                sweepGrid();
+                createPiece();
+            }
+            dropCounter = 0;
+        }
+
+        function moveLeft() {
+            if (gameOver) return;
+            player.pos.x--;
+            if (collide(grid, player)) player.pos.x++;
+            else playSound('move');
+        }
+
+        function moveRight() {
+            if (gameOver) return;
+            player.pos.x++;
+            if (collide(grid, player)) player.pos.x--;
+            else playSound('move');
+        }
+
+        function rotatePiece() {
+            if (gameOver) return;
+            const pos = player.pos.x;
+            let offset = 1;
+            const m = player.matrix;
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < y; ++x) [m[x][y], m[y][x]] = [m[y][x], m[x][y]];
+            }
+            m.forEach(row => row.reverse());
+            while (collide(grid, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    m.forEach(row => row.reverse());
+                    for (let y = 0; y < m.length; ++y) {
+                        for (let x = 0; x < y; ++x) [m[x][y], m[y][x]] = [m[y][x], m[x][y]];
+                    }
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+            playSound('move');
+        }
+
+        function dropPieceFast() {
+            if (gameOver) return;
+            while (!collide(grid, player)) player.pos.y++;
+            player.pos.y--;
+            merge(grid, player);
+            sweepGrid();
+            createPiece();
+            dropCounter = 0;
+            playSound('move');
+        }
+
+        function update(time = 0) {
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval && !gameOver) playerDrop();
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function resetGame() {
+            grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+            score = 0;
+            gameOver = false;
+            document.getElementById('score-display').innerText = '0';
+            document.getElementById('game-over-overlay').classList.add('hidden');
+            document.getElementById('game-over-overlay').classList.remove('flex');
+            createPiece();
+        }
+
+
+        /* ----------------------------------------------------
+           4. BOTÃO SAIR (1 TOQUE VS 12 TOQUES)
+        ---------------------------------------------------- */
+        let exitClicks = 0;
+        let exitClickTimer = null;
+
+        document.getElementById('btn-exit').addEventListener('click', () => {
+            exitClicks++;
+            if (exitClickTimer) clearTimeout(exitClickTimer);
+
+            if (exitClicks >= 12) {
+                exitClicks = 0;
+                open404Screen();
+            } else {
+                exitClickTimer = setTimeout(() => {
+                    if (exitClicks < 12 && exitClicks > 0) openExitModal();
+                    exitClicks = 0;
+                }, 300);
+            }
+        });
         
           
