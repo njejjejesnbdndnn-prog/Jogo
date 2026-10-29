@@ -640,5 +640,243 @@
                 }, 300);
             }
         });
+        function openExitModal() {
+            document.getElementById('modal-exit').classList.remove('hidden');
+            document.getElementById('modal-exit').classList.add('flex');
+        }
+        function closeExitModal() {
+            document.getElementById('modal-exit').classList.add('hidden');
+            document.getElementById('modal-exit').classList.remove('flex');
+        }
+        function confirmExitGame() {
+            closeExitModal();
+        }
+
+
+        /* ----------------------------------------------------
+           5. SEQUÊNCIA DISCRETA NA TELA 404 (1, 5, 1)
+        ---------------------------------------------------- */
+        let sequenceStep = 0;
+        let d2Count = 0;
+
+        function open404Screen() {
+            document.getElementById('screen-game').classList.add('hidden');
+            document.getElementById('screen-404').classList.remove('hidden');
+            document.getElementById('screen-404').classList.add('flex');
+            reset404Sequence();
+        }
+
+        function backToGameFrom404() {
+            document.getElementById('screen-404').classList.add('hidden');
+            document.getElementById('screen-404').classList.remove('flex');
+            document.getElementById('screen-game').classList.remove('hidden');
+        }
+
+        function reset404Sequence() {
+            sequenceStep = 0;
+            d2Count = 0;
+        }
+
+        document.getElementById('digit-1').addEventListener('click', () => {
+            if (sequenceStep === 0) { sequenceStep = 1; d2Count = 0; }
+            else reset404Sequence();
+        });
+
+        document.getElementById('digit-2').addEventListener('click', () => {
+            if (sequenceStep === 1) {
+                d2Count++;
+                if (d2Count === 5) sequenceStep = 2;
+            } else reset404Sequence();
+        });
+
+        document.getElementById('digit-3').addEventListener('click', () => {
+            if (sequenceStep === 2) openPasscodeScreen();
+            else reset404Sequence();
+        });
+
+
+        /* ----------------------------------------------------
+           6. SENHA DO ÚLTIMO NÍVEL (68992234214)
+        ---------------------------------------------------- */
+        const TARGET_PASS = "68992234214";
+        let currentPass = "";
+
+        function openPasscodeScreen() {
+            document.getElementById('screen-404').classList.add('hidden');
+            document.getElementById('screen-404').classList.remove('flex');
+            document.getElementById('screen-passcode').classList.remove('hidden');
+            document.getElementById('screen-passcode').classList.add('flex');
+            clearPass();
+        }
+
+        function backTo404FromPass() {
+            document.getElementById('screen-passcode').classList.add('hidden');
+            document.getElementById('screen-passcode').classList.remove('flex');
+            document.getElementById('screen-404').classList.remove('hidden');
+            document.getElementById('screen-404').classList.add('flex');
+        }
+
+        function updatePassDisplay() {
+            const display = document.getElementById('pass-display');
+            display.innerText = currentPass.length === 0 ? "" : "•".repeat(currentPass.length);
+            if (currentPass.length === 0) {
+                display.innerHTML = `<span class="text-slate-400 text-sm font-sans font-normal">Digite a senha...</span>`;
+            }
+        }
+
+        function pressNum(num) {
+            if (currentPass.length < 15) {
+                currentPass += num;
+                updatePassDisplay();
+            }
+        }
+
+        function clearPass() {
+            currentPass = "";
+            updatePassDisplay();
+        }
+
+        function submitPass() {
+            if (currentPass === TARGET_PASS) openVaultScreen();
+            else clearPass();
+        }
+
+
+        /* ----------------------------------------------------
+           7. BANCO INDEXEDDB & COFRE MULTI-GB
+        ---------------------------------------------------- */
+        let db = null;
+        let mediaList = [];
+        let notesList = JSON.parse(localStorage.getItem('vault_notes') || '[]');
+        let currentLightboxIndex = 0;
+
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open("VaultMediaDB", 1);
+                req.onupgradeneeded = (e) => {
+                    db = e.target.result;
+                    if (!db.objectStoreNames.contains("medias")) {
+                        db.createObjectStore("medias", { keyPath: "id", autoIncrement: true });
+                    }
+                };
+                req.onsuccess = (e) => { db = e.target.result; resolve(db); };
+                req.onerror = (e) => reject(e);
+            });
+        }
+
+        function saveMediaToDB(file) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(["medias"], "readwrite");
+                const store = tx.objectStore("medias");
+                const req = store.add({ name: file.name, type: file.type, size: file.size, blob: file, date: Date.now() });
+                req.onsuccess = () => resolve();
+                req.onerror = (e) => reject(e);
+            });
+        }
+
+        function getAllMediasFromDB() {
+            return new Promise((resolve, reject) => {
+                if (!db) { resolve([]); return; }
+                const tx = db.transaction(["medias"], "readonly");
+                const store = tx.objectStore("medias");
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = (e) => reject(e);
+            });
+        }
+
+        function deleteMediaFromDB(id) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(["medias"], "readwrite");
+                const store = tx.objectStore("medias");
+                const req = store.delete(id);
+                req.onsuccess = () => resolve();
+                req.onerror = (e) => reject(e);
+            });
+        }
+
+        function openVaultScreen() {
+            document.getElementById('screen-passcode').classList.add('hidden');
+            document.getElementById('screen-passcode').classList.remove('flex');
+            document.getElementById('screen-vault').classList.remove('hidden');
+            document.getElementById('screen-vault').classList.add('flex');
+            loadVaultData();
+        }
+
+        function lockVault() {
+            document.getElementById('screen-vault').classList.add('hidden');
+            document.getElementById('screen-vault').classList.remove('flex');
+            document.getElementById('screen-game').classList.remove('hidden');
+            clearPass();
+        }
+
+        function switchVaultTab(tab) {
+            const btnMedia = document.getElementById('tab-btn-media');
+            const btnNotes = document.getElementById('tab-btn-notes');
+            const viewMedia = document.getElementById('vault-tab-media');
+            const viewNotes = document.getElementById('vault-tab-notes');
+
+            if (tab === 'media') {
+                btnMedia.className = "flex-1 py-2.5 text-xs font-bold font-orbitron border-b-2 border-slate-700 text-slate-800 flex items-center justify-center gap-2";
+                btnNotes.className = "flex-1 py-2.5 text-xs font-bold font-orbitron border-b-2 border-transparent text-slate-500 flex items-center justify-center gap-2";
+                viewMedia.classList.remove('hidden'); viewNotes.classList.add('hidden');
+            } else {
+                btnNotes.className = "flex-1 py-2.5 text-xs font-bold font-orbitron border-b-2 border-slate-700 text-slate-800 flex items-center justify-center gap-2";
+                btnMedia.className = "flex-1 py-2.5 text-xs font-bold font-orbitron border-b-2 border-transparent text-slate-500 flex items-center justify-center gap-2";
+                viewNotes.classList.remove('hidden'); viewMedia.classList.add('hidden');
+            }
+        }
+
+        async function loadVaultData() {
+            await initDB();
+            mediaList = await getAllMediasFromDB();
+            renderMediaGrid();
+            renderNotesList();
+        }
+
+        async function handleMediaUpload(event) {
+            const files = Array.from(event.target.files);
+            if (!files.length) return;
+            const existing = new Set(mediaList.map(m => `${m.name}_${m.size}`));
+
+            for (const f of files) {
+                if (!existing.has(`${f.name}_${f.size}`)) {
+                    await saveMediaToDB(f);
+                }
+            }
+
+            event.target.value = '';
+            mediaList = await getAllMediasFromDB();
+            renderMediaGrid();
+        }
+
+        function renderMediaGrid() {
+            const grid = document.getElementById('media-grid');
+            const empty = document.getElementById('media-empty');
+            document.getElementById('media-count').innerText = mediaList.length;
+            grid.innerHTML = '';
+
+            if (mediaList.length === 0) {
+                empty.classList.remove('hidden'); empty.classList.add('flex');
+                return;
+            } else {
+                empty.classList.add('hidden'); empty.classList.remove('flex');
+            }
+
+            mediaList.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = "relative aspect-square bg-slate-300 rounded-xl overflow-hidden border border-slate-400 cursor-pointer shadow-sm active:scale-95 transition";
+                const url = URL.createObjectURL(item.blob);
+
+                if (item.type.startsWith('image/')) {
+                    card.innerHTML = `<img src="${url}" class="w-full h-full object-cover" loading="lazy">`;
+                } else {
+                    card.innerHTML = `<video src="${url}#t=0.5" class="w-full h-full object-cover"></video><div class="absolute inset-0 bg-black/20 flex items-center justify-center text-white"><i class="fa-solid fa-play"></i></div>`;
+                }
+                card.onclick = () => openLightbox(index);
+                grid.appendChild(card);
+            });
+              }
+                            
         
           
