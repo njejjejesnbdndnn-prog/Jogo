@@ -877,6 +877,161 @@
                 grid.appendChild(card);
             });
               }
-                            
+             
+        /* ----------------------------------------------------
+           8. LIGHTBOX E SWIPE LATERAL
+        ---------------------------------------------------- */
+        function openLightbox(index) {
+            currentLightboxIndex = index;
+            document.getElementById('lightbox').classList.remove('hidden');
+            document.getElementById('lightbox').classList.add('flex');
+            renderLightboxItem();
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.add('hidden');
+            document.getElementById('lightbox').classList.remove('flex');
+            document.getElementById('lightbox-viewer').innerHTML = '';
+        }
+
+        function renderLightboxItem() {
+            const viewer = document.getElementById('lightbox-viewer');
+            viewer.innerHTML = '';
+            if (mediaList.length === 0) { closeLightbox(); return; }
+
+            const item = mediaList[currentLightboxIndex];
+            document.getElementById('lightbox-counter').innerText = `${currentLightboxIndex + 1} / ${mediaList.length}`;
+            const url = URL.createObjectURL(item.blob);
+
+            if (item.type.startsWith('image/')) {
+                const img = document.createElement('img');
+                img.src = url;
+                img.className = "max-w-full max-h-full object-contain pointer-events-none";
+                viewer.appendChild(img);
+            } else {
+                const video = document.createElement('video');
+                video.src = url;
+                video.controls = true;
+                video.autoplay = true;
+                video.className = "max-w-full max-h-full object-contain";
+                viewer.appendChild(video);
+            }
+        }
+
+        async function deleteCurrentMedia() {
+            if (!mediaList.length) return;
+            await deleteMediaFromDB(mediaList[currentLightboxIndex].id);
+            mediaList = await getAllMediasFromDB();
+            if (currentLightboxIndex >= mediaList.length) currentLightboxIndex = Math.max(0, mediaList.length - 1);
+            renderMediaGrid();
+            if (mediaList.length) renderLightboxItem(); else closeLightbox();
+        }
+
+        let touchX = 0;
+        const viewer = document.getElementById('lightbox-viewer');
+        viewer.addEventListener('touchstart', e => { touchX = e.changedTouches[0].screenX; }, { passive: true });
+        viewer.addEventListener('touchend', e => {
+            const diff = e.changedTouches[0].screenX - touchX;
+            if (diff < -50 && currentLightboxIndex < mediaList.length - 1) { currentLightboxIndex++; renderLightboxItem(); }
+            if (diff > 50 && currentLightboxIndex > 0) { currentLightboxIndex--; renderLightboxItem(); }
+        }, { passive: true });
+
+
+        /* ----------------------------------------------------
+           9. SISTEMA DE NOTAS
+        ---------------------------------------------------- */
+        let editingNoteId = null;
+
+        function renderNotesList() {
+            const list = document.getElementById('notes-list');
+            const empty = document.getElementById('notes-empty');
+            document.getElementById('notes-count').innerText = notesList.length;
+            list.innerHTML = '';
+
+            if (notesList.length === 0) {
+                empty.classList.remove('hidden'); empty.classList.add('flex');
+                return;
+            } else {
+                empty.classList.add('hidden'); empty.classList.remove('flex');
+            }
+
+            notesList.forEach(note => {
+                const card = document.createElement('div');
+                card.className = "vault-card p-4 rounded-xl flex flex-col justify-between border border-slate-300 shadow-sm";
+                card.innerHTML = `
+                    <div class="mb-2">
+                        <h4 class="font-bold text-slate-800 text-sm">${escapeHTML(note.title)}</h4>
+                        <p class="text-xs text-slate-600 whitespace-pre-wrap mt-1">${escapeHTML(note.content)}</p>
+                    </div>
+                    <div class="flex justify-between items-center border-t border-slate-300 pt-2 text-[10px] text-slate-400">
+                        <span>${note.date}</span>
+                        <div class="flex gap-2">
+                            <button onclick="openNoteModal(${note.id})" class="text-slate-700 font-bold">Editar</button>
+                            <button onclick="deleteNote(${note.id})" class="text-rose-600 font-bold">Excluir</button>
+                        </div>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function openNoteModal(id = null) {
+            editingNoteId = id;
+            const modal = document.getElementById('modal-note');
+            if (id) {
+                const n = notesList.find(item => item.id === id);
+                document.getElementById('note-title-input').value = n.title;
+                document.getElementById('note-content-input').value = n.content;
+            } else {
+                document.getElementById('note-title-input').value = '';
+                document.getElementById('note-content-input').value = '';
+            }
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+        }
+
+        function closeNoteModal() {
+            document.getElementById('modal-note').classList.add('hidden');
+            document.getElementById('modal-note').classList.remove('flex');
+        }
+
+        function saveNote() {
+            const title = document.getElementById('note-title-input').value.trim();
+            const content = document.getElementById('note-content-input').value.trim();
+            if (!title && !content) { closeNoteModal(); return; }
+
+            const now = new Date();
+            const dateStr = `${now.toLocaleDateString()} ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+            if (editingNoteId) {
+                notesList = notesList.map(n => n.id === editingNoteId ? { ...n, title, content, date: dateStr } : n);
+            } else {
+                notesList.unshift({ id: Date.now(), title: title || "Nota", content, date: dateStr });
+            }
+
+            localStorage.setItem('vault_notes', JSON.stringify(notesList));
+            closeNoteModal();
+            renderNotesList();
+        }
+
+        function deleteNote(id) {
+            notesList = notesList.filter(n => n.id !== id);
+            localStorage.setItem('vault_notes', JSON.stringify(notesList));
+            renderNotesList();
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+        }
+
+        window.onload = () => {
+            resizeCanvas();
+            createPiece();
+            update();
+        };
+
+        window.onresize = resizeCanvas;
+    </script>
+</body>
+</html>               
         
           
