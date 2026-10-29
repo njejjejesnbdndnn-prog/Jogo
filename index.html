@@ -614,3 +614,446 @@
       </main>
     </div>
     
+    <!-- Viewer Fullscreen de Mídia (Swipe e Sem Setas) -->
+    <div id="lightbox" class="modal-hidden">
+      <div style="padding: 14px; display: flex; justify-content: space-between; align-items: center; color: white;">
+        <span id="lightbox-counter" class="font-orbitron" style="font-size: 11px; font-weight: bold; color: #cbd5e1;">1 / 1</span>
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <button onclick="deleteCurrentMedia()" style="background: none; border: none; color: #f43f5e; font-size: 16px; cursor: pointer;"><i class="fa-solid fa-trash"></i></button>
+          <button onclick="closeLightbox()" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+
+      <div id="lightbox-viewer" style="flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none;">
+        <!-- Mídia do Lightbox -->
+      </div>
+    </div>
+
+    <!-- Modal Criar/Editar Nota -->
+    <div id="modal-note" class="modal-hidden">
+      <div class="vault-card" style="max-width: 300px;">
+        <h3 class="font-orbitron" style="font-size: 13px; font-weight: bold; color: #0f172a; margin-bottom: 12px; text-align: left;">Anotação</h3>
+        <input type="text" id="note-title-input" placeholder="Título..." class="note-input">
+        <textarea id="note-content-input" placeholder="Conteúdo da nota..." class="note-textarea"></textarea>
+        <div style="display: flex; gap: 8px;">
+          <button onclick="closeNoteModal()" style="flex: 1; padding: 10px; background: #cbd5e1; color: #334155; font-weight: bold; font-size: 11px; border: none; border-radius: 10px; cursor: pointer;">Cancelar</button>
+          <button onclick="saveNote()" style="flex: 1; padding: 10px; background: #0f172a; color: white; font-weight: bold; font-size: 11px; border: none; border-radius: 10px; cursor: pointer;">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    /* ----------------------------------------------------
+       1. CONTROLE RÍGIDO DE VISIBILIDADE DAS TELAS
+    ---------------------------------------------------- */
+    function showScreen(screenId) {
+      const screens = ['screen-game', 'screen-404', 'screen-pin', 'screen-vault'];
+      screens.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          if (id === screenId) {
+            el.classList.remove('screen-hidden');
+            el.classList.add('screen-flex');
+          } else {
+            el.classList.remove('screen-flex');
+            el.classList.add('screen-hidden');
+          }
+        }
+      });
+    }
+
+    /* ----------------------------------------------------
+       2. ÁUDIO SINTETIZADO DO JOGO
+    ---------------------------------------------------- */
+    let soundEnabled = true;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playSound(type) {
+      const gameScreen = document.getElementById('screen-game');
+      if (!soundEnabled || gameScreen.classList.contains('screen-hidden')) return;
+
+      try {
+        initAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+
+        if (type === 'move') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(260, now);
+          gain.gain.setValueAtTime(0.05, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+          osc.start(now); osc.stop(now + 0.04);
+        } else if (type === 'rotate') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(400, now);
+          osc.frequency.exponentialRampToValueAtTime(600, now + 0.05);
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+          osc.start(now); osc.stop(now + 0.05);
+        } else if (type === 'drop') {
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(60, now + 0.08);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+          osc.start(now); osc.stop(now + 0.08);
+        } else if (type === 'clear') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(523.25, now);
+          osc.frequency.setValueAtTime(659.25, now + 0.06);
+          osc.frequency.setValueAtTime(783.99, now + 0.12);
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+          osc.start(now); osc.stop(now + 0.2);
+        } else if (type === 'gameover') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(300, now);
+          osc.frequency.exponentialRampToValueAtTime(80, now + 0.35);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.start(now); osc.stop(now + 0.35);
+        }
+      } catch (e) {}
+    }
+
+    document.getElementById('btn-audio').addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      document.getElementById('audio-icon').className = soundEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+    });
+
+    /* ----------------------------------------------------
+       3. ENGINE DO JOGO
+    ---------------------------------------------------- */
+    const canvas = document.getElementById('tetris-canvas');
+    const ctx = canvas.getContext('2d');
+    const COLS = 10;
+    const ROWS = 20;
+    let BLOCK_SIZE = 20;
+
+    let grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    let score = 0;
+    let gameOver = false;
+    let dropCounter = 0;
+    let dropInterval = 750;
+    let lastTime = 0;
+
+    const PALETTE = [null, '#00f0ff', '#ff007f', '#ffb703', '#06d6a0', '#7000ff', '#3a86ff', '#ff0055'];
+
+    const SHAPES = [
+      [],
+      [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+      [[0,2,0],[2,2,2],[0,0,0]],
+      [[3,3],[3,3]],
+      [[0,4,4],[4,4,0],[0,0,0]],
+      [[5,5,0],[0,5,5],[0,0,0]],
+      [[6,0,0],[6,6,6],[0,0,0]],
+      [[0,0,7],[7,7,7],[0,0,0]]
+    ];
+
+    let player = { pos: { x: 0, y: 0 }, matrix: null, colorIndex: 0 };
+
+    function resizeCanvas() {
+      const container = document.getElementById('canvas-wrapper');
+      if (!container) return;
+      const availableHeight = container.clientHeight - 10;
+      const availableWidth = container.clientWidth - 10;
+      if (availableHeight <= 0 || availableWidth <= 0) return;
+
+      BLOCK_SIZE = Math.floor(Math.min(availableHeight / ROWS, availableWidth / COLS));
+      if (BLOCK_SIZE < 10) BLOCK_SIZE = 10;
+
+      canvas.width = COLS * BLOCK_SIZE;
+      canvas.height = ROWS * BLOCK_SIZE;
+      draw();
+    }
+
+    function createPiece() {
+      const type = Math.floor(Math.random() * (SHAPES.length - 1)) + 1;
+      player.matrix = SHAPES[type];
+      player.colorIndex = type;
+      player.pos.y = 0;
+      player.pos.x = Math.floor(COLS / 2) - Math.floor(player.matrix[0].length / 2);
+
+      if (collide(grid, player)) {
+        gameOver = true;
+        playSound('gameover');
+        document.getElementById('final-score').innerText = score;
+        const goOverlay = document.getElementById('game-over-overlay');
+        goOverlay.classList.remove('modal-hidden');
+        goOverlay.classList.add('modal-flex');
+      }
+    }
+
+    function collide(grid, player) {
+      const [m, o] = [player.matrix, player.pos];
+      for (let y = 0; y < m.length; ++y) {
+        for (let x = 0; x < m[y].length; ++x) {
+          if (m[y][x] !== 0 && (grid[y + o.y] && grid[y + o.y][x + o.x]) !== 0) return true;
+        }
+      }
+      return false;
+    }
+
+    function merge(grid, player) {
+      player.matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) grid[y + player.pos.y][x + player.pos.x] = player.colorIndex;
+        });
+      });
+    }
+
+    function sweepGrid() {
+      let rowCount = 0;
+      outer: for (let y = grid.length - 1; y >= 0; --y) {
+        for (let x = 0; x < grid[y].length; ++x) {
+          if (grid[y][x] === 0) continue outer;
+        }
+        const row = grid.splice(y, 1)[0].fill(0);
+        grid.unshift(row);
+        ++y;
+        rowCount++;
+      }
+      if (rowCount > 0) {
+        score += rowCount * 100 * rowCount;
+        document.getElementById('score-display').innerText = score;
+        playSound('clear');
+      }
+    }
+
+    function drawMatrix(matrix, offset) {
+      matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            const px = (x + offset.x) * BLOCK_SIZE;
+            const py = (y + offset.y) * BLOCK_SIZE;
+            ctx.fillStyle = PALETTE[value];
+            ctx.fillRect(px + 1, py + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+          }
+        });
+      });
+    }
+
+    function draw() {
+      ctx.fillStyle = '#02040a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      drawMatrix(grid, { x: 0, y: 0 });
+      if (player.matrix) drawMatrix(player.matrix, player.pos);
+    }
+
+    function playerDrop() {
+      player.pos.y++;
+      if (collide(grid, player)) {
+        player.pos.y--;
+        merge(grid, player);
+        sweepGrid();
+        createPiece();
+      }
+      dropCounter = 0;
+    }
+
+    function moveLeft() {
+      if (gameOver) return;
+      player.pos.x--;
+      if (collide(grid, player)) player.pos.x++;
+      else playSound('move');
+    }
+
+    function moveRight() {
+      if (gameOver) return;
+      player.pos.x++;
+      if (collide(grid, player)) player.pos.x--;
+      else playSound('move');
+    }
+
+    function rotatePiece() {
+      if (gameOver) return;
+      const pos = player.pos.x;
+      let offset = 1;
+      const m = player.matrix;
+      for (let y = 0; y < m.length; ++y) {
+        for (let x = 0; x < y; ++x) [m[x][y], m[y][x]] = [m[y][x], m[x][y]];
+      }
+      m.forEach(row => row.reverse());
+      while (collide(grid, player)) {
+        player.pos.x += offset;
+        offset = -(offset + (offset > 0 ? 1 : -1));
+        if (offset > player.matrix[0].length) {
+          m.forEach(row => row.reverse());
+          for (let y = 0; y < m.length; ++y) {
+            for (let x = 0; x < y; ++x) [m[x][y], m[y][x]] = [m[y][x], m[x][y]];
+          }
+          player.pos.x = pos;
+          return;
+        }
+      }
+      playSound('rotate');
+    }
+
+    function dropPieceFast() {
+      if (gameOver) return;
+      while (!collide(grid, player)) player.pos.y++;
+      player.pos.y--;
+      merge(grid, player);
+      sweepGrid();
+      createPiece();
+      dropCounter = 0;
+      playSound('drop');
+    }
+
+    function update(time = 0) {
+      const deltaTime = time - lastTime;
+      lastTime = time;
+      dropCounter += deltaTime;
+      if (dropCounter > dropInterval && !gameOver) playerDrop();
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    function resetGame() {
+      grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+      score = 0;
+      gameOver = false;
+      document.getElementById('score-display').innerText = '0';
+      const goOverlay = document.getElementById('game-over-overlay');
+      goOverlay.classList.remove('modal-flex');
+      goOverlay.classList.add('modal-hidden');
+      createPiece();
+    }
+
+    document.getElementById('ctrl-left').addEventListener('click', moveLeft);
+    document.getElementById('ctrl-right').addEventListener('click', moveRight);
+    document.getElementById('ctrl-rotate').addEventListener('click', rotatePiece);
+    document.getElementById('ctrl-drop').addEventListener('click', dropPieceFast);
+
+    /* ----------------------------------------------------
+       4. SISTEMA DO BOTÃO SAIR (12 TOQUES SEGURO)
+    ---------------------------------------------------- */
+    let exitClicks = 0;
+    let exitClickTimer = null;
+
+    document.getElementById('btn-exit').addEventListener('click', () => {
+      exitClicks++;
+      clearTimeout(exitClickTimer);
+
+      if (exitClicks >= 12) {
+        exitClicks = 0;
+        open404Screen();
+      } else {
+        exitClickTimer = setTimeout(() => {
+          if (exitClicks > 0 && exitClicks < 12) {
+            const mExit = document.getElementById('modal-exit');
+            mExit.classList.remove('modal-hidden');
+            mExit.classList.add('modal-flex');
+          }
+          exitClicks = 0;
+        }, 300);
+      }
+    });
+
+    document.getElementById('modal-cancel').addEventListener('click', () => {
+      const mExit = document.getElementById('modal-exit');
+      mExit.classList.remove('modal-flex');
+      mExit.classList.add('modal-hidden');
+    });
+
+    document.getElementById('modal-confirm').addEventListener('click', () => {
+      const mExit = document.getElementById('modal-exit');
+      mExit.classList.remove('modal-flex');
+      mExit.classList.add('modal-hidden');
+    });
+
+    /* ----------------------------------------------------
+       5. SEQUÊNCIA DISCRETA NA TELA 404 (1, 5, 1)
+    ---------------------------------------------------- */
+    let seqStep = 0;
+    let d2Count = 0;
+
+    function open404Screen() {
+      showScreen('screen-404');
+      reset404Seq();
+    }
+
+    function reset404Seq() {
+      seqStep = 0;
+      d2Count = 0;
+    }
+
+    document.getElementById('digit-1').addEventListener('click', () => {
+      if (seqStep === 0) { seqStep = 1; d2Count = 0; }
+      else reset404Seq();
+    });
+
+    document.getElementById('digit-2').addEventListener('click', () => {
+      if (seqStep === 1) {
+        d2Count++;
+        if (d2Count === 5) seqStep = 2;
+      } else reset404Seq();
+    });
+
+    document.getElementById('digit-3').addEventListener('click', () => {
+      if (seqStep === 2) openPasscodeScreen();
+      else reset404Seq();
+    });
+
+    document.getElementById('btn-back-404').addEventListener('click', () => {
+      showScreen('screen-game');
+      resizeCanvas();
+    });
+
+    /* ----------------------------------------------------
+       6. TELA ÚLTIMO NÍVEL (SENHA: 68992234214)
+    ---------------------------------------------------- */
+    const TARGET_PASS = "68992234214";
+    let currentPass = "";
+
+    function openPasscodeScreen() {
+      showScreen('screen-pin');
+      clearPass();
+    }
+
+    function backTo404FromPass() {
+      showScreen('screen-404');
+    }
+
+    function updatePassDisplay() {
+      const display = document.getElementById('pin-display');
+      display.innerText = currentPass.length === 0 ? "" : "•".repeat(currentPass.length);
+      if (currentPass.length === 0) {
+        display.innerHTML = `<span style="color: #94a3b8; font-size: 11px; font-family: sans-serif; font-weight: normal;">Digite a senha...</span>`;
+      }
+    }
+
+    function pressNum(num) {
+      if (currentPass.length < 15) {
+        currentPass += num;
+        updatePassDisplay();
+      }
+    }
+
+    function clearPass() {
+      currentPass = "";
+      updatePassDisplay();
+    }
+
+    function submitPass() {
+      if (currentPass === TARGET_PASS) {
+        openVaultScreen();
+      } else {
+        clearPass();
+      }
+    }
+    
